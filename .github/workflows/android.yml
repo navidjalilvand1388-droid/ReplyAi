@@ -4,7 +4,8 @@ name: Build Reply AI APK
 on:
   workflow_dispatch:
   push:
-    branches: [main]
+    branches:
+      - main
 
 jobs:
   build:
@@ -16,20 +17,27 @@ jobs:
 
       - name: Extract project
         run: |
-          mkdir source
+          mkdir -p source
           unzip -q ReplyAI_v2_Android_Project.zip -d source
-          echo "Project files:"
-          find source -maxdepth 4 -type f | head -100
+          echo "Project extracted successfully"
 
       - name: Find Android project
         id: project
+        shell: bash
         run: |
-          FILE=$(find source -type f \( -name settings.gradle.kts -o -name settings.gradle \) | head -n 1)
-          if [ -z "$FILE" ]; then
-            echo "Android Gradle settings file not found"
+          SETTINGS=$(find source -type f \( \
+            -name settings.gradle.kts -o \
+            -name settings.gradle \
+          \) | head -n 1)
+
+          if [ -z "$SETTINGS" ]; then
+            echo "Android project settings not found"
             exit 1
           fi
-          echo "dir=$(dirname "$FILE")" >> "$GITHUB_OUTPUT"
+
+          PROJECT_DIR="$(dirname "$SETTINGS")"
+          echo "dir=$PROJECT_DIR" >> "$GITHUB_OUTPUT"
+          echo "Project directory: $PROJECT_DIR"
 
       - name: Set up Java
         uses: actions/setup-java@v4
@@ -44,11 +52,37 @@ jobs:
 
       - name: Build APK
         working-directory: ${{ steps.project.outputs.dir }}
-        run: gradle --no-daemon assembleDebug
+        shell: bash
+        run: |
+          gradle --no-daemon clean assembleDebug
+
+      - name: Validate APK
+        working-directory: ${{ steps.project.outputs.dir }}
+        shell: bash
+        run: |
+          APK=$(find . -type f \
+            -path '*/build/outputs/apk/debug/*.apk' \
+            | head -n 1)
+
+          if [ -z "$APK" ]; then
+            echo "APK file was not generated"
+            exit 1
+          fi
+
+          echo "APK found: $APK"
+          ls -lh "$APK"
+
+          unzip -tq "$APK"
+
+          mkdir -p "$GITHUB_WORKSPACE/output"
+          cp "$APK" "$GITHUB_WORKSPACE/output/ReplyAI.apk"
+
+          echo "APK validation completed successfully"
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: ReplyAI-APK
-          path: source/**/build/outputs/apk/debug/*.apk
+          path: output/ReplyAI.apk
           if-no-files-found: error
+          compression-level: 0
