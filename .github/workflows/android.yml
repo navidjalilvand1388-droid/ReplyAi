@@ -18,13 +18,15 @@ jobs:
         run: |
           mkdir source
           unzip -q ReplyAI_v2_Android_Project.zip -d source
+          echo "Project files:"
+          find source -maxdepth 4 -type f | head -100
 
       - name: Find Android project
         id: project
         run: |
-          FILE=$(find source -name gradlew -type f | head -n 1)
+          FILE=$(find source -type f \( -name settings.gradle.kts -o -name settings.gradle \) | head -n 1)
           if [ -z "$FILE" ]; then
-            echo "Gradle wrapper not found"
+            echo "Android Gradle settings file not found"
             exit 1
           fi
           echo "dir=$(dirname "$FILE")" >> "$GITHUB_OUTPUT"
@@ -35,11 +37,14 @@ jobs:
           distribution: temurin
           java-version: '17'
 
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.7'
+
       - name: Build APK
         working-directory: ${{ steps.project.outputs.dir }}
-        run: |
-          chmod +x gradlew
-          ./gradlew assembleDebug
+        run: gradle --no-daemon assembleDebug
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
